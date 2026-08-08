@@ -72,8 +72,14 @@ cc_library_shared {
         "-Wall",
         "-Werror",
     ],
-    generated_sources: ["wayland_android_client_protocol_sources"],
-    generated_headers: ["wayland_android_client_protocol_headers"],
+    generated_sources: [
+        "wayland_android_client_protocol_sources",
+        "xdg_shell_client_protocol_sources",
+    ],
+    generated_headers: [
+        "wayland_android_client_protocol_headers",
+        "xdg_shell_client_protocol_headers",
+    ],
 }
 
 // Generate wayland-android protocol source file
@@ -91,4 +97,33 @@ genrule {
     tools: ["wayland_scanner"],
     cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
     out: ["wayland-android-client-protocol.h"],
+}
+
+// Generate the stable xdg-shell protocol here rather than relying on
+// external/wayland-protocols. This tree's snapshot of that project predates the
+// stable xdg-shell protocol -- it ships only unstable v5 and v6, which generate
+// xdg-shell-unstable-v6-client-protocol.h and define zxdg_* names, not the
+// xdg-shell-client-protocol.h and xdg_wm_base this code includes. Vendoring the
+// protocol keeps the fix inside this repo, the same way wayland-android.xml is
+// already handled, instead of forking wayland-protocols to add one file.
+//
+// Taken verbatim from wayland-protocols 1.31, stable/xdg-shell/xdg-shell.xml.
+//
+// Note this is still needed on Sailfish even though xdg-shell is not used
+// there: the xdg code paths are compiled in and merely left unbound at runtime
+// unless persist.waydroid.prefer_xdg_shell=true.
+genrule {
+    name: "xdg_shell_client_protocol_sources",
+    srcs: ["xdg-shell.xml"],
+    tools: ["wayland_scanner"],
+    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
+    out: ["xdg-shell-client-protocol.c"],
+}
+
+genrule {
+    name: "xdg_shell_client_protocol_headers",
+    srcs: ["xdg-shell.xml"],
+    tools: ["wayland_scanner"],
+    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
+    out: ["xdg-shell-client-protocol.h"],
 }
