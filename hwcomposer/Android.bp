@@ -75,10 +75,12 @@ cc_library_shared {
     generated_sources: [
         "wayland_android_client_protocol_sources",
         "xdg_shell_client_protocol_sources",
+        "fractional_scale_client_protocol_sources",
     ],
     generated_headers: [
         "wayland_android_client_protocol_headers",
         "xdg_shell_client_protocol_headers",
+        "fractional_scale_client_protocol_headers",
     ],
 }
 
@@ -126,4 +128,28 @@ genrule {
     tools: ["wayland_scanner"],
     cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
     out: ["xdg-shell-client-protocol.h"],
+}
+
+// fractional-scale-v1, vendored for the same reason as xdg-shell above: this
+// tree's external/wayland-protocols predates it. It is the last protocol this
+// module needs that the snapshot does not carry -- everything else it includes
+// (idle-inhibit, linux-dmabuf, pointer-constraints, presentation-time,
+// relative-pointer, tablet v2, viewporter) is already there.
+//
+// Taken verbatim from wayland-protocols 1.31,
+// staging/fractional-scale/fractional-scale-v1.xml.
+genrule {
+    name: "fractional_scale_client_protocol_sources",
+    srcs: ["fractional-scale-v1.xml"],
+    tools: ["wayland_scanner"],
+    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
+    out: ["fractional-scale-v1-client-protocol.c"],
+}
+
+genrule {
+    name: "fractional_scale_client_protocol_headers",
+    srcs: ["fractional-scale-v1.xml"],
+    tools: ["wayland_scanner"],
+    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
+    out: ["fractional-scale-v1-client-protocol.h"],
 }
