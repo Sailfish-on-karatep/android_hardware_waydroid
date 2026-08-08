@@ -170,6 +170,49 @@ finished_calibrating(struct display *d)
     choose_width_height(d, d->req_width, d->req_height);
 }
 
+/*
+ * Re-arm everything that depends on the display geometry after the compositor
+ * resizes us.
+ *
+ * The touch FIFO is the important part. Android's EventHub opened
+ * /dev/input/wl_touch_events at boot and sized the device from the display it
+ * was told about; after a resize (changing display size in Android's settings,
+ * for instance) the old pipe is stale and touch silently stops working while
+ * everything else carries on -- the container does not crash and nothing is
+ * logged, so it looks like a freeze. Recreating the FIFO makes EventHub pick
+ * the device up again at the new size.
+ *
+ * waydroid.display_width/height are what the Android side reads back for its
+ * own sizing, so they have to be republished at the same time.
+ */
+static void
+do_hotplug(struct display *display)
+{
+    if (display->touch) {
+        char property[PROPERTY_VALUE_MAX];
+        int width = (int)(display->width * display->scale);
+        int height = (int)(display->height * display->scale);
+
+        if (property_get("persist.waydroid.width_padding", property, nullptr) > 0)
+            width -= atoi(property);
+        property_set("waydroid.display_width", std::to_string(width).c_str());
+
+        if (property_get("persist.waydroid.height_padding", property, nullptr) > 0)
+            height -= atoi(property);
+        property_set("waydroid.display_height", std::to_string(height).c_str());
+
+        display->input_fd[INPUT_TOUCH] = -1;
+        remove(INPUT_PIPE_NAME[INPUT_TOUCH]);
+        mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
+        chown(INPUT_PIPE_NAME[INPUT_TOUCH], 1000, 1000);
+    }
+
+    if (display->procs && display->procs->invalidate) {
+        display->needHotplug = true;
+        display->procs->invalidate(display->procs);
+    }
+}
+
 static void
 xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
                               int32_t width, int32_t height,
@@ -186,6 +229,13 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
 
     display->req_width = width;
     display->req_height = height;
+
+    if (display->height && display->width) {
+        choose_width_height(display, width, height);
+        if (display->wm_base)
+            xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
+        do_hotplug(display);
+    }
 }
 
 static void
@@ -246,6 +296,11 @@ shell_surface_configure(void *data, struct wl_shell_surface *, uint32_t, int32_t
 	}
 
     window->configured = true;
+
+    if (display->height && display->width) {
+        choose_width_height(display, width, height);
+        do_hotplug(display);
+    }
 }
 
 void

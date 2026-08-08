@@ -332,6 +332,15 @@ struct display {
     GrallocType gtype;
     double scale;
 
+    /*
+     * Set when the compositor resizes us, so hwc_set() can call procs->hotplug
+     * and make SurfaceFlinger re-read the display configuration. procs is the
+     * same hwc_procs_t hwc_register_procs() receives; it is kept here so the
+     * Wayland side can reach it from a configure handler.
+     */
+    hwc_procs_t const* procs;
+    bool needHotplug;
+
     int input_fd[INPUT_TOTAL];
     int ptrPrvX;
     int ptrPrvY;

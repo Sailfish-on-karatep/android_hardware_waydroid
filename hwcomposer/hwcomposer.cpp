@@ -479,6 +479,18 @@ static int hwc_set(struct hwc_composer_device_1* dev,size_t numDisplays,
 
     sw_sync_timeline_inc(pdev->timeline_fd, 1);
     contents->retireFenceFd = sw_sync_fence_create(pdev->timeline_fd, "hwc_contents_release", ++pdev->next_sync_point);
+
+    /*
+     * Deferred from the Wayland configure handler: hotplug has to be raised
+     * from the composition thread, not from the Wayland event thread, and only
+     * once the frame that used the old geometry has been retired. The buffer
+     * map is dropped with it because every cached buffer is the old size.
+     */
+    if (pdev->display->needHotplug && pdev->procs && pdev->procs->hotplug) {
+        pdev->procs->hotplug(pdev->procs, 0, 1);
+        pdev->display->buffer_map.clear();
+        pdev->display->needHotplug = false;
+    }
     return 0;
 }
 
@@ -531,6 +543,9 @@ static void hwc_register_procs(struct hwc_composer_device_1* dev,
                                hwc_procs_t const* procs) {
     auto *pdev = static_cast<waydroid_hwc_composer_device_1 *>(dev);
     pdev->procs = procs;
+
+    /* The Wayland side needs these to request a hotplug after a resize. */
+    pdev->display->procs = procs;
 }
 
 static int hwc_get_display_configs(struct hwc_composer_device_1* dev __unused,
