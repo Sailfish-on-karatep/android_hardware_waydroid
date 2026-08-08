@@ -463,6 +463,7 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
     bool calibrating = !display->height || !display->width;
 
     if (display->wm_base) {
+        ALOGI("Creating window with xdg-shell");
         window->xdg_surface =
                 xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
         assert(window->xdg_surface);
@@ -473,6 +474,7 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
         assert(window->xdg_toplevel);
         xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window.get());
     } else if (display->shell) {
+        ALOGI("Creating window with wl_shell");
         window->shell_surface =
             wl_shell_get_shell_surface(display->shell, window->surface);
         assert(window->shell_surface);
@@ -1847,9 +1849,32 @@ registry_handle_global(void *data, struct wl_registry *registry,
         (struct wl_subcompositor*)wl_registry_bind(registry,
                 id, &wl_subcompositor_interface, 1);
     } else if (strcmp(interface, "xdg_wm_base") == 0) {
-        d->wm_base = (struct xdg_wm_base*)wl_registry_bind(registry,
-                id, &xdg_wm_base_interface, 1);
-        xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
+        /*
+         * Sailfish OS: take the wl_shell path unless xdg-shell is asked for.
+         *
+         * window::create() prefers xdg-shell whenever d->wm_base is set, so
+         * simply not binding here is what selects wl_shell. Sailfish's
+         * compositor (lipstick) grew an xdg-shell implementation in 5.1 that is
+         * deliberately partial -- "only the basic parts needed to show
+         * maximized toplevel windows and position popups on the screen" -- and
+         * on that path our surfaces render but never receive touch. wl_shell is
+         * what the Sailfish stack has always spoken natively, and touch works
+         * there.
+         *
+         * Not conditional on detecting lipstick: globals arrive in arbitrary
+         * order, so at bind time we cannot yet know which compositor this is.
+         * This is the Sailfish branch, so wl_shell is the right default here,
+         * and the property is the escape hatch for anyone who wants the
+         * upstream behaviour back.
+         */
+        if (property_get_bool("persist.waydroid.prefer_xdg_shell", false)) {
+            d->wm_base = (struct xdg_wm_base*)wl_registry_bind(registry,
+                    id, &xdg_wm_base_interface, 1);
+            xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
+        } else {
+            ALOGI("Ignoring xdg_wm_base; using wl_shell (set "
+                  "persist.waydroid.prefer_xdg_shell=true to override)");
+        }
     } else if(strcmp(interface, "wl_shell") == 0) {
         d->shell = (struct wl_shell *)wl_registry_bind(
                 registry, id, &wl_shell_interface, 1);
@@ -1906,8 +1931,20 @@ registry_handle_global(void *data, struct wl_registry *registry,
         d->idle_manager = (struct zwp_idle_inhibit_manager_v1 *)wl_registry_bind(
                 registry, id, &zwp_idle_inhibit_manager_v1_interface, 1);
     } else if (strcmp(interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
-        d->fractional_scale_manager = (struct wp_fractional_scale_manager_v1*)wl_registry_bind(registry, id,
-                &wp_fractional_scale_manager_v1_interface, 1);
+        /*
+         * Sailfish OS: opt-in, for the same reason as xdg_wm_base above.
+         * lipstick's fractional scaling landed alongside its xdg-shell support
+         * and its scale override applies to xdg surfaces, so binding this while
+         * on the wl_shell path only invites a second scale factor on top of the
+         * one we already apply.
+         */
+        if (property_get_bool("persist.waydroid.enable_fractional_scale", false)) {
+            d->fractional_scale_manager = (struct wp_fractional_scale_manager_v1*)wl_registry_bind(registry, id,
+                    &wp_fractional_scale_manager_v1_interface, 1);
+        } else {
+            ALOGI("Ignoring fractional-scale manager (set "
+                  "persist.waydroid.enable_fractional_scale=true to override)");
+        }
     } else if (strcmp(interface, wl_data_device_manager_interface.name) == 0) {
         d->data_device_manager = (struct wl_data_device_manager *)wl_registry_bind(registry, id,
                 &wl_data_device_manager_interface, std::min(version,  3U));
