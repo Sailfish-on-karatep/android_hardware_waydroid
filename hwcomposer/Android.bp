@@ -109,7 +109,12 @@ genrule {
 // protocol keeps the fix inside this repo, the same way wayland-android.xml is
 // already handled, instead of forking wayland-protocols to add one file.
 //
-// Taken verbatim from wayland-protocols 1.31, stable/xdg-shell/xdg-shell.xml.
+// Taken verbatim from wayland-protocols 1.21, stable/xdg-shell/xdg-shell.xml.
+// 1.21 specifically, not something newer: xdg_toplevel gained configure_bounds
+// in v4 and wm_capabilities in v5, and this code's xdg_toplevel_listener
+// initialises only configure and close, so a newer protocol fails the build
+// with -Werror,-Wmissing-field-initializers. The client binds xdg_wm_base
+// version 1 regardless.
 //
 // Note this is still needed on Sailfish even though xdg-shell is not used
 // there: the xdg code paths are compiled in and merely left unbound at runtime
