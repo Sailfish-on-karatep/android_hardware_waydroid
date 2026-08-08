@@ -46,6 +46,7 @@ cc_library_shared {
     ],
     srcs: [
         "extension.cpp",
+        "sw_sync_compat.c",
         "gralloc_handler.cpp",
         "hwcomposer.cpp",
         "wayland-hwc.cpp",
