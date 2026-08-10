@@ -24,13 +24,26 @@
 using android::hardware::health::V2_0::DiskStats;
 using android::hardware::health::V2_0::StorageInfo;
 
-void healthd_board_init(struct healthd_config* config) {
-  config->periodic_chores_interval_fast = -1;
-  config->periodic_chores_interval_slow = -1;
-}
+/*
+ * The container shares the host's sysfs, so on a device that actually has a
+ * battery BatteryMonitor reads the real one out of /sys/class/power_supply and
+ * everything below is an unconditional overwrite of good data. Fake it only
+ * when there is nothing to read -- a desktop with no battery at all, which is
+ * what these values were written for.
+ *
+ * BatteryMonitor::init() already forces both chore intervals to -1 when it
+ * finds no battery, so pinning them here is redundant in that case and harmful
+ * in the other: healthd would then never poll, and a real battery would sit
+ * frozen at whatever it read when the container started.
+ */
+void healthd_board_init(struct healthd_config*) {}
 
 int healthd_board_battery_update(
     struct android::BatteryProperties* battery_props) {
+  if (battery_props->batteryPresent) {
+    return 0;
+  }
+
   battery_props->chargerAcOnline = true;
   battery_props->chargerUsbOnline = true;
   battery_props->chargerWirelessOnline = false;
