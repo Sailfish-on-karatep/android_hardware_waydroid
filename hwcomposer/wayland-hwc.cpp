@@ -1385,6 +1385,7 @@ seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t wl_caps)
     }
 
     if ((caps & WL_SEAT_CAPABILITY_TOUCH) && !d->touch) {
+        ALOGI("Seat gained touch capability");
         d->touch = wl_seat_get_touch(seat);
         d->input_fd[INPUT_TOUCH] = -1;
         mkfifo(INPUT_PIPE_NAME[INPUT_TOUCH], S_IRWXO | S_IRWXG | S_IRWXU);
@@ -1393,7 +1394,25 @@ seat_handle_capabilities(void *data, struct wl_seat *seat, uint32_t wl_caps)
             d->touch_id[i] = -1;
         wl_touch_set_user_data(d->touch, d);
         wl_touch_add_listener(d->touch, &touch_listener, d);
+
+        /*
+         * The compositor drops and re-adds the touch capability across a screen
+         * blank, so this runs on every unlock -- not just at startup.
+         *
+         * Recreating the FIFO alone is not enough. EventHub still holds the
+         * *deleted* inode open and goes on reading from it, while we write to
+         * the new one, so touch is silently dead until the session is
+         * restarted. It has to be told to re-enumerate, which is the same
+         * reason a resize needs it.
+         *
+         * Guarded on procs because the very first capabilities event arrives
+         * before hwc_register_procs(); at that point Android has not opened the
+         * device yet and there is nothing to re-enumerate.
+         */
+        if (d->procs)
+            do_hotplug(d);
     } else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && d->touch) {
+        ALOGI("Seat lost touch capability");
         remove(INPUT_PIPE_NAME[INPUT_TOUCH]);
         wl_touch_destroy(d->touch);
         d->touch = NULL;
